@@ -1,0 +1,11 @@
+# Ignorar el archivo Instructions_MS-DAP1 Defining Variables and Instructions_Template.R
+src/scripts/Instructions_MS-DAP1 Defining Variables and Instructions_Template.R
+
+# Ignorar carpeta completa con fecha específica
+src/data/2025-04-08_17-10-05/
+
+# Ignorar carpeta raw_data
+src/data/raw_data/
+
+# Ignorar archivo FASTA específico
+src/data/metadata_fasta/MOUSE_UP000000589_10090_20241002.fasta
