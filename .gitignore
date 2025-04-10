@@ -9,3 +9,6 @@ src/data/raw_data/
 
 # Ignorar archivo FASTA específico
 src/data/metadata_fasta/MOUSE_UP000000589_10090_20241002.fasta
+
+# Ignorar Rhistory
+.Rhistory
