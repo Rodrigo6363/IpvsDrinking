@@ -524,7 +524,7 @@ result_filtered_DR <- subset(df_ratio, Protein.ID %in% protein_ids)
 ######### 16. Printing all plots to PDF############
 pdf(paste0(Folderfig,"/",NameCond1,"vs",NameCond2,"Downstream_Results.pdf"))
 PCAplot
-IntensitiesPlot
+# IntensitiesPlot
 GroupsPlot_recorded
 venn_plot
 scatter
