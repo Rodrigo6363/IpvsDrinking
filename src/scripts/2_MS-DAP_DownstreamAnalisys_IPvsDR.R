@@ -4,7 +4,8 @@ library(writexl)
 library(openxlsx)
 library(readxl)
 library(dplyr)
-library(VennDiagram)
+library(ggvenn)
+
 
 ######### 13. Loading Inputs from MSDAP2####
 prot.input<-read.delim(paste0(FolderName,DateTimeStamp2,"/protein_abundance__input data as-is.tsv"))
@@ -87,6 +88,7 @@ B <- ggplot(data = pca.data, aes(x = X, y = Y, label = Sample)) +
 
 (B|A)
 PCAplot<-(B|A)
+ggsave(paste0(Folderfig,"/PCA.png"), plot = PCAplot, width = 8, height = 6, dpi = 300)
 rm(A,B, PCA_mat, pca.data, pca, pca.var, pca.var.data)
 
 
@@ -106,110 +108,179 @@ for(i in col.start.cond1:prot.col.end) { #change col numbers for sample number o
 ### boxplot of intensties
 par(mar = c(5, 4, 1, 2), cex.main = 0.9, mfrow = c(1,1), cex.axis = 0.9)
 boxplot(prot[,col.start.cond1:prot.col.end],
-        las = 2,
-        col = c(rep("#DCCB4E" ,cond1), rep("#E98905",cond2), rep("#3A9AB2",control)), #change these to match number of replicates
-        pch = 20,
-        ylab = "log2 protein intensity")
-Intensitiesplot<-recordPlot()
-
+          las = 2,
+          col = c(rep("#DCCB4E" ,cond1), rep("#E98905",cond2), rep("#3A9AB2",control)), #change these to match number of replicates
+          pch = 20,
+          ylab = "log2 protein intensity")
+IntensitiesPlot <- recordPlot()
+dev.off()
 # barplot of IDs in GGPlot stylw
 tmp <- data.frame(
   name=colnames(prot[,col.start.cond1:prot.col.end]) ,  #change columns to match sample numbers
   value=prot_count)
 
-ggplot(tmp, aes(x=name, y=value)) + 
-  geom_bar(stat = "identity", colour = "black", fill = c(rep("#DCCB4E" ,cond1), rep("#E98905",cond2), rep("#3A9AB2",control))) + 
-  scale_x_discrete(limits=colnames(prot.input[,col.start.cond1:prot.col.end]))+                                                            #change numbers
-  theme_classic()+ theme(legend.position = "none", axis.text=element_text(colour="black")) +
-  ggtitle("")+
-  ylab("protein groups") + xlab("") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-Groupsplot<-recordPlot()
-
+ggplot(tmp, aes(x = name, y = value)) + 
+  geom_bar(stat = "identity", colour = "black", 
+           fill = c(rep("#DCCB4E", cond1), rep("#E98905", cond2), rep("#3A9AB2", control))) +
+  scale_x_discrete(limits = colnames(prot.input[, col.start.cond1:prot.col.end])) +
+  theme_classic() +
+  theme(legend.position = "none", axis.text = element_text(colour = "black")) +
+  ylab("protein groups") + xlab("") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+GroupsPlot_recorded <- recordPlot()
+dev.off()
 #----------------------------------------------------------------------------------------------------------
 # List 1: Common proteins.
 list1 <- dplyr::filter(prot.input, get(paste0("counter.vv.",NameCond1)) >= a & get(paste0("counter.vv.",NameCond2)) >= b)
-write_xlsx(list1, path = file.path(FolderList, paste0("List1_", NameCond1, ".xlsx")))
+write_xlsx(list1, path = file.path(FolderList, paste0("List1_", NameCond1,"_", NameCond2, ".xlsx")))
 # List 2: Enriched IP proteins.
 list2.Fc1.5 <- list1[list1$Protein.ID %in% subset(dea, dea[[qvalue.colNam]] < pval & dea[[foldchange.colNam]] >= log2(foldlog2))$protein_id, ]
-write_xlsx(list2.Fc1.5, path = file.path(FolderList, paste0("List2_", NameCond1, "FC1.5", ".xlsx")))
+write_xlsx(list2.Fc1.5, path = file.path(FolderList, paste0("List2_", NameCond1, "_FC1.5", ".xlsx")))
 # List 2.1: Enriched DR proteins.
 list2.1Fc1.5 <- list1[list1$Protein.ID %in% subset(dea, dea[[qvalue.colNam]] < pval & dea[[foldchange.colNam]] <= -log2(foldlog2))$protein_id, ]
-write_xlsx(list2.1Fc1.5, path = file.path(FolderList, paste0("List2.1_", NameCond2, "FC1.5", ".xlsx")))
+write_xlsx(list2.1Fc1.5, path = file.path(FolderList, paste0("List2.1_", NameCond2, "_FC1.5", ".xlsx")))
 # List 3: Unique IP proteins
 list3<- dplyr::filter(prot.input, prot.input[[paste0("counter.vv.",NameCond1)]] >=a & prot.input[[paste0("counter.vv.",NameCond2)]] == 0)
 write_xlsx(list3, path = file.path(FolderList, paste0("List3_", NameCond1, ".xlsx")))
 # List 3.1: Unique DR proteins
 list3.1<- dplyr::filter(prot.input, prot.input[[paste0("counter.vv.",NameCond2)]] >=a & prot.input[[paste0("counter.vv.",NameCond1)]] == 0)
 write_xlsx(list3.1, path = file.path(FolderList, paste0("List3.1_", NameCond2, ".xlsx")))
+# List 4: IP Proteome
+list4 <- rbind(list2.Fc1.5, list3)
+write_xlsx(list4, path = file.path(FolderList, paste0("List4_", NameCond1, ".xlsx")))
+# List 4.1: DR Proteome
+list4.1 <- rbind(list2.1Fc1.5, list3.1)
+write_xlsx(list4.1, path = file.path(FolderList, paste0("List4.1_", NameCond2, ".xlsx")))
 
 #-----------------------------------------------------------------------------------------------------------
 
 
 commons<-dplyr::filter(prot.input, prot.input[[paste0("counter.vv.",NameCond1)]] >=a & prot.input[[paste0("counter.vv.",NameCond2)]] >= b)
 assign(paste0("commons.",NameCond1,"_", NameCond2),commons)
-write_xlsx(commons, path = paste0(FolderList,"Commons_",NameCond2, "_", NameCond1, ".xlsx"))
+#write_xlsx(commons, path = paste0(FolderList,"Commons_",NameCond2, "_", NameCond1, ".xlsx"))
 rm(commons)
 
 uniques<-dplyr::filter(prot.input, prot.input[[paste0("counter.vv.",NameCond1)]] >=a & prot.input[[paste0("counter.vv.",NameCond2)]] == 0)
 assign(paste0("uniques.",NameCond1),uniques)
-write_xlsx(uniques, path = paste0(FolderList,"List3", NameCond1, ".xlsx"))
+#write_xlsx(uniques, path = paste0(FolderList,"List3", NameCond1, ".xlsx"))
 rm(uniques)
 uniques<- dplyr::filter(prot.input, prot.input[[paste0("counter.vv.",NameCond2)]] >=b & prot.input[[paste0("counter.vv.",NameCond1)]] == 0)
 assign(paste0("uniques.",NameCond2),uniques)
-write_xlsx(uniques, path = paste0(FolderList,"List3_", NameCond1, ".xlsx"))
+#write_xlsx(uniques, path = paste0(FolderList,"List3_", NameCond1, ".xlsx"))
 rm(uniques)
 
 #-------------------------------------------------------------------------------------------------------------
 
-# # Crear el diagrama de Venn
-# venn.plot <- venn.diagram(
-#   x = list(DataFrame1 = set1, DataFrame2 = set2),
-#   filename = NULL, # para mostrar directamente en RStudio
-#   fill = c("lightblue", "pink"),
-#   alpha = 0.5,
-#   cat.cex = 1.5,
-#   cex = 2,
-#   margin = 0.1
-# )
-# 
-# # Dibujar diagrama en pantalla
-# grid.newpage()
-# grid.draw(venn.plot)
+# Define los sets de proteínas detectadas en cada condición
+set_IP <- prot.input$Protein.ID[prot.input[[paste0("counter.vv.", NameCond1)]] >= a]
+set_DR <- prot.input$Protein.ID[prot.input[[paste0("counter.vv.", NameCond2)]] >= b]
 
+venn_data <- list(
+  IP = set_IP,
+  DR = set_DR
+)
+
+venn_plot <- ggvenn(venn_data,
+                    fill_color = c("lightblue", "salmon"),
+                    stroke_size = 0.5,
+                    set_name_size = 8,
+                    text_size = 5) +
+  ggtitle("Venn diagram detected proteins") +
+  
+  # Añadir anotaciones debajo de cada área
+  annotate("text", x = -1.2, y = -0.5, label = "list3", size = 7, fontface = "italic") +       # IP
+  annotate("text", x =  1.2, y = -0.5, label = "list3.1", size = 7, fontface = "italic") +     # DR
+  annotate("text", x =  0, y =  0.5, label = "list1", size = 7, fontface = "italic") +           # Intersección
+  
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold", margin = margin(b=20)),
+        plot.subtitle = element_text(hjust = 0.5, size = 12))
+
+ggsave(paste0(Folderfig,"/Venn_diagram.png"), plot = venn_plot, width = 8, height = 6, dpi = 300)
+
+# Mostrar el gráfico
+print(venn_plot)
 #-------------------------------------------------------------------------------------------------------------
-# Count the rows for each category and condition
-counts <- data.frame(
-  Category = c("Commons", "Uniques", "Uniques"),
-  Condition = c(paste0(NameCond1, "_", NameCond2), NameCond1, NameCond2),
-  Count = c(
-    nrow(get(paste0("commons.", NameCond1,"_",NameCond2))),
-    nrow(get(paste0("uniques.", NameCond1))),
-    nrow(get(paste0("uniques.", NameCond2)))
-  ),
-  Word = c("List1", "List3", "List3.1")
+# 1. Calcular los promedios de IP y DR
+df_scatter <- prot.input %>%
+  rowwise() %>%
+  mutate(
+    mean_IP = mean(c_across(contains("_IP")), na.rm = TRUE),
+    mean_DR = mean(c_across(contains("_DR")), na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+# 2. Scatterplot de IP vs DR con ejes definidos, sin grid, puntos redondeados y mismo color para todos
+scatter <-  ggplot(df_scatter, aes(x = mean_IP, y = mean_DR)) +
+    geom_point(size = 3, shape = 21, fill = "#1f77b4", stroke = 0.3) +
+    labs(
+      title = "Scatterplot: IP vs DR",
+      x = "Mean IP intensity",
+      y = "Mean DR intensity"
+    ) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") +
+    theme(
+      panel.background = element_blank(),
+      panel.grid = element_blank(),
+      axis.line = element_line(color = "black"),
+      axis.ticks = element_line(color = "black"),
+      axis.text = element_text(color = "black")
+    ) +
+    expand_limits(x = 0, y = 0)
+
+ggsave(paste0(Folderfig,"/scatter.png"), plot = scatter, width = 8, height = 6, dpi = 300)
+
+
+print(scatter)
+#-------------------------------------------------------------------------------------------------------------
+calcular_media_cond <- function(df, sufijo_cond) {
+  df %>%
+    rowwise() %>%
+    mutate(mean = mean(c_across(contains(sufijo_cond)), na.rm = TRUE)) %>%
+    pull(mean) %>%
+    mean(na.rm = TRUE)
+}
+
+mean_list2   <- calcular_media_cond(list2.Fc1.5, "_IP")
+mean_list3   <- calcular_media_cond(list3, "_IP")
+mean_list4   <- calcular_media_cond(list4, "_IP")
+mean_list2.1 <- calcular_media_cond(list2.1Fc1.5, "_DR")
+mean_list3.1 <- calcular_media_cond(list3.1, "_DR")
+mean_list4.1 <- calcular_media_cond(list4.1, "_DR")
+
+
+# Crear dataframe para el plot
+bar_data <- data.frame(
+  grupo = factor(c("list2", "list3", "list4", "list2.1", "list3.1", "list4.1"),
+                 levels = c("list2", "list3", "list4", "list2.1", "list3.1", "list4.1")),  # orden fijo
+  condicion = c("IP", "IP", "IP", "DR", "DR", "DR"),
+  media = c(mean_list2, mean_list3, mean_list4, mean_list2.1, mean_list3.1, mean_list4.1)
 )
 
 
-ggplot(counts, aes(x = Condition, y = Count, fill = Category)) +
-  geom_bar(stat = "identity", position = "dodge", colour = "black") +
-  geom_text(aes(label = paste(Count, Word, sep = "\n")), 
-            position = position_dodge(width = 0.9), 
-            vjust = -0.5,  # Move the labels above the bars
-            size = 3.5) +  # Adjust label size as needed
-  theme_classic() +
-  theme(plot.title = element_text(margin = margin(b = 20))) +  # Add margin to title
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +  # Extend y-axis limits
-  labs(
-    title = "Comparison of Exclusives, Commons, and Uniques",
-    x = "Condition",
-    y = "Count"
-  ) +
-  scale_fill_manual(values = c("Exclusives" = "#DCCB4E", "Commons" = "#E98905", "Uniques" = "#3A9AB2"))
+# Gráfico de barras agrupado sin grid y con ejes bien marcados
+int_list <- ggplot(bar_data, aes(x = grupo, y = media, fill = condicion)) +
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = c("IP" = "#1f77b4", "DR" = "#ff7f0e")) +
+    labs(
+      title = "Mean intensity per group",
+      x = "Group",
+      y = "Mean intensity",
+      fill = "Condition"
+    ) +
+    theme(
+      panel.background = element_blank(),
+      panel.grid = element_blank(),
+      axis.line = element_line(color = "black"),
+      axis.ticks = element_line(color = "black"),
+      axis.text = element_text(color = "black"),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
 
-Countsplot <- recordPlot()
-rm(counts)
+print(int_list)
+ggsave(paste0(Folderfig,"/protein_intensity_lists.png"), plot = int_list, width = 8, height = 6, dpi = 300)
 
 
+#-------------------------------------------------------------------------------------------------------------
 # Filter the most enriched proteins from both sides
 enriched_proteins <- get(paste0("dea.", NameCond2, "vs", NameCond1)) %>%
   dplyr::filter(get(pvalue.colNam) <= pval & 
@@ -241,11 +312,11 @@ for (n in 1:nrow(x)) {
 }
 
 dea_data<-x
-assign(paste0("dea.", NameCond2, "vs", NameCond1, "."), dea_data)
+assign(paste0("dea.", NameCond2, "vs", NameCond1), dea_data)
 rm(dea_data)
 ######### 14c. Generating Candidate Lists based on q-value and log############
 # Initialize candidates column
-dea_data <- get(paste0("dea.", NameCond2, "vs", NameCond1, "."))
+dea_data <- get(paste0("dea.", NameCond2, "vs", NameCond1))
 dea_data$candidates.q <- NA  # or c("")
 x<-dea_data
 for (n in 1:nrow(x)) {
@@ -264,6 +335,7 @@ for (n in 1:nrow(x)) {
 dea_data<-x
 assign(paste0("dea.", NameCond2, "vs", NameCond1, "."), dea_data)
 rm(dea_data)
+
 ################## 14.a PRINCIPAL VOLCANO ##########################
 data = get(paste0("dea.", NameCond2, "vs", NameCond1, "."))
 # Count the significant proteins on each side
@@ -272,8 +344,8 @@ count_negative <- nrow(data %>% dplyr::filter(get(pvalue.colNam) < pval & get(fo
 
 # Create the plot title with the counts in English and in the requested order
 title_with_counts <- paste0(NameCond1, "vs", NameCond2,
-                            " | Enriched proteins: IP (", count_positive, 
-                            ") / DR (", count_negative, ")")
+                            " | Enriched proteins: DR (", count_negative, 
+                            ") / IP (", count_positive, ")")
 
 # Clean the data by removing rows with NA in the 'gene_symbols_or_id' column
 data_clean <- data %>% filter(!is.na(gene_symbols_or_id))
@@ -315,6 +387,8 @@ DEAvolplot<-(C)
 print(C)
 rm(C)
 
+ggsave(paste0(Folderfig,"/volcano.png"), plot = DEAvolplot, width = 8, height = 6, dpi = 300)
+
 #-------------------------------------------------------------------------------------------
 
 # Crear los subconjuntos de proteínas enriquecidas
@@ -335,11 +409,11 @@ print(head(proteins_DR))
 
 # Crear el top 10 de proteínas más intensas en función de log2 fold change y -log10(p-value)
 top10_IP <- proteins_IP %>%
-  arrange(desc(get(foldchange.colNam)), desc(-log10(get(pvalue.colNam)))) %>%
+  arrange(desc(get(foldchange.colNam))) %>%
   head(10)
 
 top10_DR <- proteins_DR %>%
-  arrange(desc(get(foldchange.colNam)), desc(-log10(get(pvalue.colNam)))) %>%
+  arrange(!!sym(foldchange.colNam)) %>%  # orden ascendente → más negativo primero
   head(10)
 
 # Verificar los nuevos dataframes
@@ -361,18 +435,14 @@ top10_DR <- merge(top10_DR, list2.1Fc1.5,by="Protein.ID")
 top10_DR <- select(top10_DR, -"accessions", -paste0("counter.vv.",NameCond2), -paste0("counter.vv.",NameCond1),
                               -paste0(foldchange.colNam), -paste0(pvalue.colNam), -paste0(qvalue.colNam))
 
-# proteins_plus_mHtt <- proteins_plus_mHtt[, !(names(proteins_plus_mHtt) %in% cols_to_remove)]
-# top10_plus_mHtt <- top10_plus_mHtt[, !(names(top10_plus_mHtt) %in% cols_to_remove)]
-# proteins_minus_mHtt <- proteins_minus_mHtt[, !(names(proteins_minus_mHtt) %in% cols_to_remove)]
-# top10_minus_mHtt <- top10_minus_mHtt[, !(names(top10_minus_mHtt) %in% cols_to_remove)]
 
-# Crear una lista con los dataframes y nombres de hoja
-# lista_hojas <- list(
-#   "proteins_plus_mHtt" = proteins_plus_mHtt,
-#   "top10_plus_mHtt" = top10_plus_mHtt,
-#   "proteins_minus_mHtt" = proteins_minus_mHtt,
-#   "top10_minus_mHtt" = top10_minus_mHtt
-# )
+#Crear una lista con los dataframes y nombres de hoja
+lista_hojas <- list(
+  "proteins_IP" = proteins_IP,
+  "top_IP" = top10_IP,
+  "proteins_DR" = proteins_DR,
+  "top10_DR" = top10_DR
+)
 
 #------------------------------------------------------------------------------------------
 
@@ -393,37 +463,37 @@ calculate_foldchange <- function(df,
     log2(df[[paste0("mean_", variable_name_cond1)]] / df[[paste0("mean_", variable_name_cond2)]])
   
   # Calcular el fold change sin log2
-  df[[paste0("Ratio_", variable_name_cond1, "_", variable_name_cond1)]] <- 
+  df[[paste0("Ratio_", variable_name_cond1, "_", variable_name_cond2)]] <- 
     df[[paste0("mean_", variable_name_cond1)]] / df[[paste0("mean_", variable_name_cond2)]]
   
   # Determinar la significancia basada en el log2 fold change
   df[[paste0("significant_Log2_", variable_name_cond1)]] <- ifelse(
-    df[[paste0("Log2_foldchange_", variable_name_cond2, "_", variable_name_cond1)]] > foldchange_threshold, 
+    df[[paste0("Log2_foldchange_", variable_name_cond1, "_", variable_name_cond2)]] > foldchange_threshold, 
     "IP", 
     ifelse(
-      df[[paste0("Log2_foldchange_", variable_name_cond2, "_", variable_name_cond1)]] < foldchange_threshold, 
+      df[[paste0("Log2_foldchange_", variable_name_cond1, "_", variable_name_cond2)]] < foldchange_threshold, 
       "DR", 
       NA
     )
   )
   
   # Determinar la significancia basada en el ratio sin log2
-  df[[paste0("significant_Ratio_", variable_name_cond2)]] <- ifelse(
-    df[[paste0("Ratio_", variable_name_cond2, "_", variable_name_cond1)]] > ratio_threshold, 
+  df[[paste0("significant_Ratio_", variable_name_cond1)]] <- ifelse(
+    df[[paste0("Ratio_", variable_name_cond1, "_", variable_name_cond2)]] > ratio_threshold, 
     "IP", 
     ifelse(
-      df[[paste0("Ratio_", variable_name_cond2, "_", variable_name_cond1)]] < (1 / ratio_threshold), 
+      df[[paste0("Ratio_", variable_name_cond1, "_", variable_name_cond2)]] < (1 / ratio_threshold), 
       "DR", 
       NA
     )
   )
   
   # Contar los valores de IP y DR para ambas medidas
-  count_IP_log2 <- sum(df[[paste0("significant_Log2_", variable_name_cond2)]] == "IP", na.rm = TRUE)
-  count_DR_log2 <- sum(df[[paste0("significant_Log2_", variable_name_cond2)]] == "DR", na.rm = TRUE)
+  count_IP_log2 <- sum(df[[paste0("significant_Log2_", variable_name_cond1)]] == "IP", na.rm = TRUE)
+  count_DR_log2 <- sum(df[[paste0("significant_Log2_", variable_name_cond1)]] == "DR", na.rm = TRUE)
   
-  count_IP_ratio <- sum(df[[paste0("significant_Ratio_", variable_name_cond2)]] == "DR", na.rm = TRUE)
-  count_DR_ratio <- sum(df[[paste0("significant_Ratio_", variable_name_cond2)]] == "DR", na.rm = TRUE)
+  count_IP_ratio <- sum(df[[paste0("significant_Ratio_", variable_name_cond1)]] == "IP", na.rm = TRUE)
+  count_DR_ratio <- sum(df[[paste0("significant_Ratio_", variable_name_cond1)]] == "DR", na.rm = TRUE)
   
   # Guardar los resultados en un dataframe separado para el reporte
   summary_df <- data.frame(
@@ -448,5 +518,15 @@ result_filtered_IP <- subset(df_ratio, Protein.ID %in% protein_ids)
 
 
 # Filtrar y agregar las columnas adicionales como antes
-protein_ids <- unique(top10_DR$Protein.ID                                                )
+protein_ids <- unique(top10_DR$Protein.ID)
 result_filtered_DR <- subset(df_ratio, Protein.ID %in% protein_ids)
+
+######### 16. Printing all plots to PDF############
+pdf(paste0(Folderfig,"/",NameCond1,"vs",NameCond2,"Downstream_Results.pdf"))
+PCAplot
+IntensitiesPlot
+GroupsPlot_recorded
+venn_plot
+scatter
+DEAvolplot
+dev.off()
