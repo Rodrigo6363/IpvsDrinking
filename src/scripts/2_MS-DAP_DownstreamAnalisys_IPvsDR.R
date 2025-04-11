@@ -8,8 +8,8 @@ library(ggvenn)
 
 
 ######### 13. Loading Inputs from MSDAP2####
-prot.input<-read.delim(paste0(FolderName,DateTimeStamp2,"/protein_abundance__input data as-is.tsv"))
-dea<-readxl::read_excel(paste0(FolderName,DateTimeStamp2,"/differential_abundance_analysis.xlsx"), sheet = 2)
+prot.input<-read.delim(paste0(FolderName,DateTimeStamp,"/protein_abundance__input data as-is.tsv"))
+dea<-readxl::read_excel(paste0(FolderName,DateTimeStamp,"/differential_abundance_analysis.xlsx"), sheet = 2)
 colnames(prot.input) <- c("Protein.ID", "FASTA", "Gene.ID",
                            "5_Ctrl","3_DR","4_DR","1_IP","2_IP")
 
@@ -199,6 +199,28 @@ ggsave(paste0(Folderfig,"/Venn_diagram.png"), plot = venn_plot, width = 8, heigh
 
 # Mostrar el gráfico
 print(venn_plot)
+
+venn_data_com <- list(
+  IP = list2.Fc1.5$Protein.ID,
+  DR = list2.1Fc1.5$Protein.ID
+)
+
+venn_plot_com <- ggvenn(venn_data_com,
+                    fill_color = c("lightblue", "salmon"),
+                    stroke_size = 0.5,
+                    set_name_size = 8,
+                    text_size = 5) +
+  ggtitle("Venn diagram detected proteins") +
+  
+  # Añadir anotaciones debajo de cada área
+  annotate("text", x = -1.2, y = -0.5, label = "list2", size = 7, fontface = "italic") +       # IP
+  annotate("text", x =  1.2, y = -0.5, label = "list2.1", size = 7, fontface = "italic") +     # DR
+  #annotate("text", x =  0, y =  0.5, label = "list1", size = 7, fontface = "italic") +           # Intersección
+  
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold", margin = margin(b=20)),
+        plot.subtitle = element_text(hjust = 0.5, size = 12))
+
+print(venn_plot_com)
 #-------------------------------------------------------------------------------------------------------------
 # 1. Calcular los promedios de IP y DR
 df_scatter <- prot.input %>%
@@ -520,6 +542,33 @@ result_filtered_IP <- subset(df_ratio, Protein.ID %in% protein_ids)
 # Filtrar y agregar las columnas adicionales como antes
 protein_ids <- unique(top10_DR$Protein.ID)
 result_filtered_DR <- subset(df_ratio, Protein.ID %in% protein_ids)
+
+
+# Crear una lista con los dataframes
+dataframes <- list(
+  "df_ratio" = df_ratio, 
+  "summary" = summary_df, 
+  "volcano_IP" = result_filtered_IP, 
+  "volcano_DR" = result_filtered_DR
+)
+
+# Filtrar dataframes vacíos (con 0 filas)
+dataframes <- dataframes[sapply(dataframes, function(df) nrow(df) > 0)]
+
+# Guardar en Excel solo si la lista no está vacía
+if (length(dataframes) > 0) {
+  write_xlsx(dataframes, path = paste0(FolderList,"df_ratio.xlsx"))
+  print("Archivo Candidates.xlsx guardado correctamente.")
+} else {
+  print("No hay dataframes válidos para guardar.")
+}
+
+# Mensaje en consola para imprimir el número de +mHtt y -mHtt para ambas condiciones
+message("Number of IP (Log2): ", summary_df$count[summary_df$category == "IP_Log2"])
+message("Number of DR (Log2): ", summary_df$count[summary_df$category == "DR_Log2"])
+message("Number of IP (Ratio): ", summary_df$count[summary_df$category == "IP_Ratio"])
+message("Number of DR (Ratio): ", summary_df$count[summary_df$category == "DR_Ratio"])
+
 
 ######### 16. Printing all plots to PDF############
 pdf(paste0(Folderfig,"/",NameCond1,"vs",NameCond2,"Downstream_Results.pdf"))
