@@ -1,11 +1,13 @@
 library(ggrepel)
+library(ggplot2)
 library(msdap)
 library(writexl)
 library(openxlsx)
 library(readxl)
 library(dplyr)
 library(ggvenn)
-
+library(plotly)
+library(svglite)
 
 ######### 13. Loading Inputs from MSDAP2####
 prot.input<-read.delim(paste0(FolderName,DateTimeStamp,"/protein_abundance__input data as-is.tsv"))
@@ -17,7 +19,7 @@ colnames(prot.input) <- c("Protein.ID", "FASTA", "Gene.ID",
 prot.input <- prot.input[, c("Protein.ID", "FASTA", "Gene.ID", "1_IP", "2_IP", "3_DR", "4_DR", "5_Ctrl")]
 
 dea <- dea[,c(1:3,6,10,14,16)] #this doesn't change
-colnames(dea) <- c("protein_id","accessions",                                         
+colnames(dea) <- c("Protein.ID","accessions",                                         
                     "fasta_headers","gene_symbols_or_id",                                
                     foldchange.colNam,
                     pvalue.colNam,
@@ -119,7 +121,7 @@ tmp <- data.frame(
   name=colnames(prot[,col.start.cond1:prot.col.end]) ,  #change columns to match sample numbers
   value=prot_count)
 
-ggplot(tmp, aes(x = name, y = value)) + 
+barplot_group <- ggplot(tmp, aes(x = name, y = value)) + 
   geom_bar(stat = "identity", colour = "black", 
            fill = c(rep("#DCCB4E", cond1), rep("#E98905", cond2), rep("#3A9AB2", control))) +
   scale_x_discrete(limits = colnames(prot.input[, col.start.cond1:prot.col.end])) +
@@ -127,18 +129,31 @@ ggplot(tmp, aes(x = name, y = value)) +
   theme(legend.position = "none", axis.text = element_text(colour = "black")) +
   ylab("protein groups") + xlab("") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
-GroupsPlot_recorded <- recordPlot()
-dev.off()
+
+ggsave(filename = paste0(Folderfig, "/barplot_group.svg"),
+       plot = barplot_group,
+       width = 8, height = 6, units = "in")
+
 #----------------------------------------------------------------------------------------------------------
 # List 1: Common proteins.
-list1 <- dplyr::filter(prot.input, get(paste0("counter.vv.",NameCond1)) >= a & get(paste0("counter.vv.",NameCond2)) >= b)
+list1 <- dplyr::filter(prot.input, get(paste0("counter.vv.",NameCond1)) == 2 & get(paste0("counter.vv.",NameCond2)) == 2)
 write_xlsx(list1, path = file.path(FolderList, paste0("List1_", NameCond1,"_", NameCond2, ".xlsx")))
 # List 2: Enriched IP proteins.
-list2.Fc1.5 <- list1[list1$Protein.ID %in% subset(dea, dea[[qvalue.colNam]] < pval & dea[[foldchange.colNam]] >= log2(foldlog2))$protein_id, ]
-write_xlsx(list2.Fc1.5, path = file.path(FolderList, paste0("List2_", NameCond1, "_FC1.5", ".xlsx")))
+list2.Fc1.5 <- list1[list1$Protein.ID %in% subset(dea, dea[[qvalue.colNam]] < pval & dea[[foldchange.colNam]] >= log2(foldlog2))$Protein.ID, ]
+list2.Fc1.5_ordered <- merge(list2.Fc1.5, dea, by="Protein.ID")
+list2.Fc1.5_ordered <- list2.Fc1.5_ordered %>% select(-accessions, -fasta_headers, -gene_symbols_or_id)
+list2.Fc1.5_ordered <- list2.Fc1.5_ordered %>%
+  arrange(desc(-foldchange.log2.IP.DR), desc(pvalue.log2.DR.IP))
+write_xlsx(list2.Fc1.5, path = file.path(FolderList, paste0("List2.1_", NameCond2, "_FC1.5", ".xlsx")))
+write_xlsx(list2.Fc1.5_ordered, path = file.path(FolderList, paste0("List2.1_", NameCond2, "_FC1.5_ordered", ".xlsx")))
 # List 2.1: Enriched DR proteins.
-list2.1Fc1.5 <- list1[list1$Protein.ID %in% subset(dea, dea[[qvalue.colNam]] < pval & dea[[foldchange.colNam]] <= -log2(foldlog2))$protein_id, ]
+list2.1Fc1.5 <- list1[list1$Protein.ID %in% subset(dea, dea[[qvalue.colNam]] < pval & dea[[foldchange.colNam]] <= -log2(foldlog2))$Protein.ID, ]
+list2.1Fc1.5_ordered <- merge(list2.1Fc1.5, dea, by="Protein.ID")
+list2.1Fc1.5_ordered <- list2.1Fc1.5_ordered %>% select(-accessions, -fasta_headers, -gene_symbols_or_id)
+list2.1Fc1.5_ordered <- list2.1Fc1.5_ordered %>%
+  arrange(desc(-foldchange.log2.IP.DR), desc(pvalue.log2.DR.IP))
 write_xlsx(list2.1Fc1.5, path = file.path(FolderList, paste0("List2.1_", NameCond2, "_FC1.5", ".xlsx")))
+write_xlsx(list2.1Fc1.5_ordered, path = file.path(FolderList, paste0("List2.1_", NameCond2, "_FC1.5_ordered", ".xlsx")))
 # List 3: Unique IP proteins
 list3<- dplyr::filter(prot.input, prot.input[[paste0("counter.vv.",NameCond1)]] >=a & prot.input[[paste0("counter.vv.",NameCond2)]] == 0)
 write_xlsx(list3, path = file.path(FolderList, paste0("List3_", NameCond1, ".xlsx")))
@@ -172,8 +187,8 @@ rm(uniques)
 #-------------------------------------------------------------------------------------------------------------
 
 # Define los sets de proteínas detectadas en cada condición
-set_IP <- prot.input$Protein.ID[prot.input[[paste0("counter.vv.", NameCond1)]] >= a]
-set_DR <- prot.input$Protein.ID[prot.input[[paste0("counter.vv.", NameCond2)]] >= b]
+set_IP <- prot.input$Protein.ID[prot.input[[paste0("counter.vv.", NameCond1)]] == 2]
+set_DR <- prot.input$Protein.ID[prot.input[[paste0("counter.vv.", NameCond2)]] == 2]
 
 venn_data <- list(
   IP = set_IP,
@@ -195,7 +210,7 @@ venn_plot <- ggvenn(venn_data,
   theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold", margin = margin(b=20)),
         plot.subtitle = element_text(hjust = 0.5, size = 12))
 
-ggsave(paste0(Folderfig,"/Venn_diagram.png"), plot = venn_plot, width = 8, height = 6, dpi = 300)
+ggsave(paste0(Folderfig,"/Venn_diagram.svg"), plot = venn_plot, width = 8, height = 6, dpi = 300)
 
 # Mostrar el gráfico
 print(venn_plot)
@@ -215,7 +230,7 @@ venn_plot_com <- ggvenn(venn_data_com,
   # Añadir anotaciones debajo de cada área
   annotate("text", x = -1.2, y = -0.5, label = "list2", size = 7, fontface = "italic") +       # IP
   annotate("text", x =  1.2, y = -0.5, label = "list2.1", size = 7, fontface = "italic") +     # DR
-  #annotate("text", x =  0, y =  0.5, label = "list1", size = 7, fontface = "italic") +           # Intersección
+  #annotate("text", x =  0, y =  0.5, label = "list1", size = 7, fontface = "italic") +        # Intersección
   
   theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold", margin = margin(b=20)),
         plot.subtitle = element_text(hjust = 0.5, size = 12))
@@ -249,7 +264,7 @@ scatter <-  ggplot(df_scatter, aes(x = mean_IP, y = mean_DR)) +
     ) +
     expand_limits(x = 0, y = 0)
 
-ggsave(paste0(Folderfig,"/scatter.png"), plot = scatter, width = 8, height = 6, dpi = 300)
+ggsave(paste0(Folderfig,"/scatter.svg"), plot = scatter, width = 8, height = 6, dpi = 300)
 
 
 print(scatter)
@@ -299,7 +314,7 @@ int_list <- ggplot(bar_data, aes(x = grupo, y = media, fill = condicion)) +
     )
 
 print(int_list)
-ggsave(paste0(Folderfig,"/protein_intensity_lists.png"), plot = int_list, width = 8, height = 6, dpi = 300)
+ggsave(paste0(Folderfig,"/protein_intensity_lists.svg"), plot = int_list, width = 8, height = 6, dpi = 300)
 
 
 #-------------------------------------------------------------------------------------------------------------
@@ -380,37 +395,86 @@ C <- ggplot(data = data_clean,
                                 "IP", 
                                 ifelse(get(pvalue.colNam) <= pval & get(foldchange.colNam) <= -log2(foldlog2), 
                                        "DR", 
-                                       "Non-enriched proteins")))) + 
+                                       "Non-enriched proteins")),
+                label = gene_symbols_or_id  # <- para tooltip interactivo
+            )) + 
   geom_point(size = 0.9) +
-  scale_colour_manual(name = NULL, # Remove legend title
+  scale_colour_manual(name = NULL,
                       values = c("IP" = '#003366', "DR" = '#FFA500', "Non-enriched proteins" = 'grey')) +
   theme_classic() + 
-  theme(legend.position = "bottom", # Position the legend at the bottom
-        legend.direction = "horizontal", # Display the legend horizontally
-        axis.text = element_text(colour = "black")) + 
+  theme(legend.position = "bottom",
+        legend.direction = "horizontal",
+        axis.text = element_text(colour = "black")) +
   ggtitle(title_with_counts) + 
   xlab("log2 fold change") + 
   ylab("-log10(p-value)") +
   geom_hline(yintercept = -log10(pval), linetype = "dashed", color = "grey50", size = 0.6) +
   geom_vline(xintercept = log2(foldlog2), linetype = "dashed", color = "grey50", size = 0.6) +
   geom_vline(xintercept = -log2(foldlog2), linetype = "dashed", color = "grey50", size = 0.6) +
-  geom_label_repel(data = enriched_proteins, 
-                   aes(label = gene_symbols_or_id), 
-                   size = 3, 
-                   color = "black", 
-                   fill = "lightgrey", 
-                   box.padding = 0.5, 
-                   point.padding = 0.5, 
-                   max.overlaps = Inf) +
-  guides(colour = guide_legend(nrow = 1)) # Make the legend horizontal below the title
+  geom_label_repel(data = enriched_proteins,
+                   aes(x = get(foldchange.colNam),
+                       y = -log10(get(pvalue.colNam)),
+                       label = gene_symbols_or_id),
+                   size = 3,
+                   color = "black",
+                   fill = "lightgrey",
+                   box.padding = 0.5,
+                   point.padding = 0.5,
+                   max.overlaps = Inf,
+                   inherit.aes = FALSE)
 
+  guides(colour = guide_legend(nrow = 1))
 
 DEAvolplot<-(C)
 print(C)
 rm(C)
 
-ggsave(paste0(Folderfig,"/volcano.png"), plot = DEAvolplot, width = 8, height = 6, dpi = 300)
+ggsave(paste0(Folderfig,"/volcano.svg"), plot = DEAvolplot, width = 8, height = 6, dpi = 300)
 
+#-------------------------------------------------------------------------------------------
+
+data_clean$log2fc <- data_clean[[foldchange.colNam]]
+data_clean$log10pval <- -log10(data_clean[[pvalue.colNam]])
+
+data_clean$grupo <- ifelse(
+  data_clean[[pvalue.colNam]] <= pval & data_clean[[foldchange.colNam]] >= log2(foldlog2),
+  "IP",
+  ifelse(
+    data_clean[[pvalue.colNam]] <= pval & data_clean[[foldchange.colNam]] <= -log2(foldlog2),
+    "DR",
+    "Non-enriched proteins"
+  )
+)
+
+fig <- plot_ly(
+  data = data_clean,
+  x = ~log2fc,
+  y = ~log10pval,
+  type = 'scatter',
+  mode = 'markers',
+  color = ~grupo,
+  colors = c("IP" = '#003366', "DR" = '#FFA500', "Non-enriched proteins" = 'grey'),
+  text = ~paste("Protein ID:", Protein.ID,
+                "<br>Gene:", gene_symbols_or_id,
+                "<br>log2FC:", round(log2fc, 2),
+                "<br>-log10(p):", round(log10pval, 2)),
+  hoverinfo = 'text',
+  marker = list(size = 5, opacity = 0.8)
+)
+
+
+fig <- fig %>%
+  layout(
+    title = list(text = title_with_counts),
+    xaxis = list(title = "log2 fold change"),
+    yaxis = list(title = "-log10(p-value)"),
+    legend = list(orientation = "h", x = 0.3, y = -0.2),
+    margin = list(b = 80)
+  )
+
+
+htmlwidgets::saveWidget(fig, "plotly_plot.html", selfcontained = TRUE)
+browseURL("plotly_plot.html")
 #-------------------------------------------------------------------------------------------
 
 # Crear los subconjuntos de proteínas enriquecidas
@@ -445,13 +509,13 @@ print(top10_IP)
 print("Top 10 proteínas enriquecidas en DR:")
 print(top10_DR)
 
-top10_IP <- rename(top10_IP, "Protein.ID" = "protein_id","FASTA" = "fasta_headers",
+top10_IP <- rename(top10_IP,"FASTA" = "fasta_headers",
                              "Gene.ID" = "gene_symbols_or_id")
 top10_IP <- merge(top10_IP, list2.Fc1.5,by="Protein.ID")
 top10_IP <- select(top10_IP, -"accessions", -paste0("counter.vv.",NameCond2), -paste0("counter.vv.",NameCond1),
                              -paste0(foldchange.colNam), -paste0(pvalue.colNam), -paste0(qvalue.colNam))
 
-top10_DR <- rename(top10_DR, "Protein.ID" = "protein_id","FASTA" = "fasta_headers",
+top10_DR <- rename(top10_DR,"FASTA" = "fasta_headers",
                    "Gene.ID" = "gene_symbols_or_id")
 top10_DR <- merge(top10_DR, list2.1Fc1.5,by="Protein.ID")
 top10_DR <- select(top10_DR, -"accessions", -paste0("counter.vv.",NameCond2), -paste0("counter.vv.",NameCond1),
