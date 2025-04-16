@@ -1,3 +1,5 @@
+#----------------------------------------------------------------------------------------------------------
+
 library(ggrepel)
 library(ggplot2)
 library(msdap)
@@ -8,7 +10,10 @@ library(dplyr)
 library(ggvenn)
 library(plotly)
 library(svglite)
+library(tidyr)
 
+
+#----------------------------------------------------------------------------------------------------------
 ######### 13. Loading Inputs from MSDAP2####
 prot.input<-read.delim(paste0(FolderName,DateTimeStamp,"/protein_abundance__input data as-is.tsv"))
 dea<-readxl::read_excel(paste0(FolderName,DateTimeStamp,"/differential_abundance_analysis.xlsx"), sheet = 2)
@@ -32,6 +37,7 @@ assign(paste0("dea.", NameCond2, "vs", NameCond1), dea)
 prot.input[[paste0("counter.vv.",NameCond2)]] <- rowSums(!is.na(prot.input[,c(col.start.cond2:col.end.cond2)]))
 prot.input[[paste0("counter.vv.",NameCond1)]] <- rowSums(!is.na(prot.input[,c(col.start.cond1:col.end.cond1)]))
 
+#----------------------------------------------------------------------------------------------------------
 ### PCA ###
 
 ### PCA 1
@@ -93,6 +99,7 @@ PCAplot<-(B|A)
 ggsave(paste0(Folderfig,"/PCA.png"), plot = PCAplot, width = 8, height = 6, dpi = 300)
 rm(A,B, PCA_mat, pca.data, pca, pca.var, pca.var.data)
 
+#----------------------------------------------------------------------------------------------------------
 
 ######### 4. Protein Count and Intensities###################################
 #prepare input and counter-vector
@@ -105,35 +112,74 @@ for(i in col.start.cond1:prot.col.end) { #change col numbers for sample number o
   rm(temp)
 }
 
-
-
 ### boxplot of intensties
+
+svg(filename = paste0(Folderfig, "/boxplot_intensity_group.svg"), width = 8, height = 6)
+
+
 par(mar = c(5, 4, 1, 2), cex.main = 0.9, mfrow = c(1,1), cex.axis = 0.9)
-boxplot(prot[,col.start.cond1:prot.col.end],
-          las = 2,
-          col = c(rep("#DCCB4E" ,cond1), rep("#E98905",cond2), rep("#3A9AB2",control)), #change these to match number of replicates
-          pch = 20,
-          ylab = "log2 protein intensity")
-IntensitiesPlot <- recordPlot()
+
+boxplot(prot[, col.start.cond1:prot.col.end],
+        las = 2,
+        col = c(rep("#DCCB4E", cond1), rep("#E98905", cond2), rep("#3A9AB2", control)),
+        pch = 20,
+        ylab = "log2 protein intensity")
+
 dev.off()
-# barplot of IDs in GGPlot stylw
-tmp <- data.frame(
-  name=colnames(prot[,col.start.cond1:prot.col.end]) ,  #change columns to match sample numbers
-  value=prot_count)
 
-barplot_group <- ggplot(tmp, aes(x = name, y = value)) + 
-  geom_bar(stat = "identity", colour = "black", 
-           fill = c(rep("#DCCB4E", cond1), rep("#E98905", cond2), rep("#3A9AB2", control))) +
-  scale_x_discrete(limits = colnames(prot.input[, col.start.cond1:prot.col.end])) +
-  theme_classic() +
-  theme(legend.position = "none", axis.text = element_text(colour = "black")) +
-  ylab("protein groups") + xlab("") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+#----------------------------------------------------------------------------------------------------------
 
-ggsave(filename = paste0(Folderfig, "/barplot_group.svg"),
-       plot = barplot_group,
-       width = 8, height = 6, units = "in")
+# Boxplot intesity, with protein group count identified in 2 samples of each condition
 
+# Step 1: Count protein groups identified in both replicates for each condition
+counts <- tibble(
+  Condition = c("IP", "DR"),
+  n = c(
+    prot.input %>% filter(counter.vv.IP == 2) %>% nrow(),
+    prot.input %>% filter(counter.vv.DR == 2) %>% nrow()
+  )
+)
+
+# Step 2: Convert data to long format for plotting
+long_data <- prot.input %>%
+  pivot_longer(cols = c(`1_IP`, `2_IP`, `3_DR`, `4_DR`),
+               names_to = "Sample",
+               values_to = "Intensity") %>%
+  mutate(Condition = case_when(
+    str_detect(Sample, "IP") ~ "IP",
+    str_detect(Sample, "DR") ~ "DR"
+  ))
+
+# Custom colors (matching the original design)
+colors <- c("IP" = "#d8b500", "DR" = "#ea782c")
+
+svg(filename = paste0(Folderfig, "/Protein_intensity_group_boxplot.svg"),
+    width = 8, height = 6)
+# Step 3: Final plot
+ggplot(long_data, aes(x = Condition, y = Intensity, color = Condition)) +
+  geom_boxplot(
+    fill = NA,               # No fill inside the boxes
+    outlier.shape = 16,      # Solid dots for outliers
+    outlier.size = 2,
+    width = 0.25,            # Narrower boxes
+    size = 1.2               # Thickness of lines and whiskers
+  ) +
+  scale_color_manual(values = colors) +
+  labs(y = expression("Mean log"[2]*" Protein Intensity"), x = NULL) +
+  theme_classic(base_size = 14) +
+  theme(
+    legend.position = "none",
+    axis.line = element_line(size = 0.8),
+    axis.text.x = element_text(size = 12, face = "bold"),
+    axis.text.y = element_text(size = 12),
+    axis.title.y = element_text(size = 14)
+  ) +
+  # Add number of identified protein groups above each box
+  geom_text(data = counts,
+            aes(x = Condition, y = max(long_data$Intensity, na.rm = TRUE) + 1,
+                label = format(n, big.mark = ",")),
+            fontface = "italic", size = 5)
+dev.off()
 #----------------------------------------------------------------------------------------------------------
 # List 1: Common proteins.
 list1 <- dplyr::filter(prot.input, get(paste0("counter.vv.",NameCond1)) == 2 & get(paste0("counter.vv.",NameCond2)) == 2)
@@ -196,7 +242,7 @@ venn_data <- list(
 )
 
 venn_plot <- ggvenn(venn_data,
-                    fill_color = c("lightblue", "salmon"),
+                    fill_color = c("#FDF2B5", "#F4A582"),
                     stroke_size = 0.5,
                     set_name_size = 8,
                     text_size = 5) +
@@ -214,6 +260,25 @@ ggsave(paste0(Folderfig,"/Venn_diagram.svg"), plot = venn_plot, width = 8, heigh
 
 # Mostrar el gráfico
 print(venn_plot)
+
+#-------------------------------------------------------------------------------------------------------------
+# Empty Venn
+
+venn_plot_plate <- ggvenn(
+  venn_data,
+  fill_color = c("#FDF2B5", "#F4A582"),
+  stroke_size = 0,
+  set_name_size = 0,   # sin nombres de los conjuntos
+  text_size = 0        # sin conteos
+)
+
+print(venn_plot_plate)
+
+
+# Guardar el diagrama en SVG
+ggsave(paste0(Folderfig, "/Venn_diagram_plate.svg"), plot = venn_plot, width = 8, height = 6, dpi = 300)
+
+#-------------------------------------------------------------------------------------------------------------
 
 venn_data_com <- list(
   IP = list2.Fc1.5$Protein.ID,
@@ -237,6 +302,48 @@ venn_plot_com <- ggvenn(venn_data_com,
 
 print(venn_plot_com)
 #-------------------------------------------------------------------------------------------------------------
+## COVER GRAPH
+
+# 1. Seleccionar columnas de interés
+# (ajusta los nombres si son distintos)
+df_detect <- prot.input %>%
+  select(Protein.ID, contains("_IP"), contains("_DR"))  # Añade otras condiciones si tienes
+
+# 2. Convertir a binario: 1 = detectado, 0 = NA
+df_detect_binary <- df_detect %>%
+  mutate(across(-Protein.ID, ~ ifelse(!is.na(.), 1, 0)))
+
+# 3. Agrupar por condición (por columnas), para tener un solo valor por condición y proteína
+df_long <- df_detect_binary %>%
+  pivot_longer(-Protein.ID, names_to = "Sample", values_to = "Detected") %>%
+  mutate(Condition = case_when(
+    grepl("_IP$", Sample) ~ "IP",
+    grepl("_DR$", Sample) ~ "DR",
+    TRUE ~ "Other"
+  )) %>%
+  group_by(Protein.ID, Condition) %>%
+  summarise(Detected = max(Detected), .groups = "drop")  # Si se detecta al menos una vez en esa condición
+
+# 4. Opcional: orden original de proteínas
+df_long$Protein.ID <- factor(df_long$Protein.ID, levels = unique(df_long$Protein.ID))
+
+# 5. Heatmap de cobertura
+ggplot(df_long, aes(x = Protein.ID, y = Condition, fill = factor(Detected))) +
+  geom_tile() +
+  scale_fill_manual(values = c("0" = "white", "1" = "black"), name = "Detected",
+                    labels = c("No", "Yes")) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_text(color = "black", size = 10)
+  ) +
+  labs(x = NULL, y = NULL, title = "Proteins detected by condition (coverage heatmap)")
+
+
+
+#-------------------------------------------------------------------------------------------------------------
+
 # 1. Calcular los promedios de IP y DR
 df_scatter <- prot.input %>%
   rowwise() %>%
@@ -245,6 +352,7 @@ df_scatter <- prot.input %>%
     mean_DR = mean(c_across(contains("_DR")), na.rm = TRUE)
   ) %>%
   ungroup()
+
 
 # 2. Scatterplot de IP vs DR con ejes definidos, sin grid, puntos redondeados y mismo color para todos
 scatter <-  ggplot(df_scatter, aes(x = mean_IP, y = mean_DR)) +
@@ -387,49 +495,70 @@ title_with_counts <- paste0(NameCond1, "vs", NameCond2,
 # Clean the data by removing rows with NA in the 'gene_symbols_or_id' column
 data_clean <- data %>% filter(!is.na(gene_symbols_or_id))
 
+# Add SPTBN1 
+sptbn1_row <- data_clean %>% filter(gene_symbols_or_id == "SPTBN1")
+
+# Combine with the another genes 
+enriched_proteins <- bind_rows(enriched_proteins, sptbn1_row) %>% distinct()
+
+genes_a_anotar <- c("SPTBN1", "RASGRF2", "UBXN2B", "SPARCL1", "PRSS59", "PTPN6", "FABP7", "SPOCK2")
+genes_to_label <- data_clean %>%
+  filter(gene_symbols_or_id %in% genes_a_anotar)
+
 # Create the plot without the 'NA' category in the legend
 C <- ggplot(data = data_clean, 
             aes(x = get(foldchange.colNam), 
                 y = -log10(get(pvalue.colNam)), 
                 colour = ifelse(get(pvalue.colNam) <= pval & get(foldchange.colNam) >= log2(foldlog2), 
-                                "IP", 
+                                "IP 5", 
                                 ifelse(get(pvalue.colNam) <= pval & get(foldchange.colNam) <= -log2(foldlog2), 
-                                       "DR", 
+                                       "DR 2559", 
                                        "Non-enriched proteins")),
-                label = gene_symbols_or_id  # <- para tooltip interactivo
+                label = gene_symbols_or_id
             )) + 
   geom_point(size = 0.9) +
-  scale_colour_manual(name = NULL,
-                      values = c("IP" = '#003366', "DR" = '#FFA500', "Non-enriched proteins" = 'grey')) +
+  
+  scale_colour_manual(
+    name = "significantly more abundant:",
+    values = c(
+      "IP 5" = "#003366",
+      "DR 2559" = "#FFA500",
+      "Not significant" = "lightgrey"
+    )
+  )+
   theme_classic() + 
-  theme(legend.position = "bottom",
-        legend.direction = "horizontal",
-        axis.text = element_text(colour = "black")) +
-  ggtitle(title_with_counts) + 
+  theme(
+    plot.title = element_blank(),
+    legend.position = c(1.5, 1.5),         
+    legend.justification = c(1,1),         
+    legend.direction = "vertical",         
+    legend.background = element_blank(),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 10, face = "bold"),
+    axis.text = element_text(colour = "black")
+  ) +
+  guides(colour = guide_legend(nrow = 1)) +  
   xlab("log2 fold change") + 
   ylab("-log10(p-value)") +
   geom_hline(yintercept = -log10(pval), linetype = "dashed", color = "grey50", size = 0.6) +
   geom_vline(xintercept = log2(foldlog2), linetype = "dashed", color = "grey50", size = 0.6) +
   geom_vline(xintercept = -log2(foldlog2), linetype = "dashed", color = "grey50", size = 0.6) +
-  geom_label_repel(data = enriched_proteins,
+  geom_label_repel(data = genes_to_label,#enriched_proteins,
                    aes(x = get(foldchange.colNam),
                        y = -log10(get(pvalue.colNam)),
                        label = gene_symbols_or_id),
                    size = 3,
                    color = "black",
-                   fill = "lightgrey",
+                   fill = "white",
                    box.padding = 0.5,
                    point.padding = 0.5,
                    max.overlaps = Inf,
-                   inherit.aes = FALSE)
-
-  guides(colour = guide_legend(nrow = 1))
-
-DEAvolplot<-(C)
+                   inherit.aes = FALSE) 
+DEAvolplot <- C
 print(C)
 rm(C)
 
-ggsave(paste0(Folderfig,"/volcano.svg"), plot = DEAvolplot, width = 8, height = 6, dpi = 300)
+ggsave(paste0(Folderfig, "/volcano.svg"), plot = DEAvolplot, width = 8, height = 6, dpi = 300)
 
 #-------------------------------------------------------------------------------------------
 
@@ -445,6 +574,7 @@ data_clean$grupo <- ifelse(
     "Non-enriched proteins"
   )
 )
+
 
 fig <- plot_ly(
   data = data_clean,
@@ -637,8 +767,6 @@ message("Number of DR (Ratio): ", summary_df$count[summary_df$category == "DR_Ra
 ######### 16. Printing all plots to PDF############
 pdf(paste0(Folderfig,"/",NameCond1,"vs",NameCond2,"Downstream_Results.pdf"))
 PCAplot
-# IntensitiesPlot
-GroupsPlot_recorded
 venn_plot
 scatter
 DEAvolplot
