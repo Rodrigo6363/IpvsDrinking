@@ -11,6 +11,7 @@ library(ggvenn)
 library(plotly)
 library(svglite)
 library(tidyr)
+library(stringr)
 
 
 #----------------------------------------------------------------------------------------------------------
@@ -302,45 +303,44 @@ venn_plot_com <- ggvenn(venn_data_com,
 
 print(venn_plot_com)
 #-------------------------------------------------------------------------------------------------------------
-## COVER GRAPH
 
-# 1. Seleccionar columnas de interés
-# (ajusta los nombres si son distintos)
-df_detect <- prot.input %>%
-  select(Protein.ID, contains("_IP"), contains("_DR"))  # Añade otras condiciones si tienes
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 
-# 2. Convertir a binario: 1 = detectado, 0 = NA
-df_detect_binary <- df_detect %>%
-  mutate(across(-Protein.ID, ~ ifelse(!is.na(.), 1, 0)))
+# Subset: solo columnas con réplicas IP y DR
+prot_bin <- prot.input %>%
+  select(Protein.ID, `1_IP`, `2_IP`, `3_DR`, `4_DR`) %>%
+  mutate(across(-Protein.ID, ~ ifelse(!is.na(.), 1, 0)))  # 1 si detectado, 0 si NA
 
-# 3. Agrupar por condición (por columnas), para tener un solo valor por condición y proteína
-df_long <- df_detect_binary %>%
-  pivot_longer(-Protein.ID, names_to = "Sample", values_to = "Detected") %>%
-  mutate(Condition = case_when(
-    grepl("_IP$", Sample) ~ "IP",
-    grepl("_DR$", Sample) ~ "DR",
-    TRUE ~ "Other"
-  )) %>%
-  group_by(Protein.ID, Condition) %>%
-  summarise(Detected = max(Detected), .groups = "drop")  # Si se detecta al menos una vez en esa condición
+# Convertir a formato largo
+prot_long <- prot_bin %>%
+  pivot_longer(cols = -Protein.ID, names_to = "replicate", values_to = "detected") %>%
+  mutate(condition = ifelse(grepl("IP", replicate), "IP", "DR"))
 
-# 4. Opcional: orden original de proteínas
-df_long$Protein.ID <- factor(df_long$Protein.ID, levels = unique(df_long$Protein.ID))
+# Ordenar proteínas para visualización
+prot_ordered <- prot_long %>%
+  group_by(Protein.ID) %>%
+  summarise(score = sum(detected), .groups = "drop") %>%
+  arrange(desc(score)) %>%
+  mutate(order = row_number())
 
-# 5. Heatmap de cobertura
-ggplot(df_long, aes(x = Protein.ID, y = Condition, fill = factor(Detected))) +
-  geom_tile() +
-  scale_fill_manual(values = c("0" = "white", "1" = "black"), name = "Detected",
-                    labels = c("No", "Yes")) +
+# Juntar orden con detección
+plot_df <- prot_long %>%
+  left_join(prot_ordered, by = "Protein.ID")
+
+# Heatmap tipo 'barcode'
+p <-ggplot(plot_df, aes(x = order, y = condition, fill = factor(detected))) +
+  geom_tile(width = 1) +
+  scale_fill_manual(values = c("white", "black"), name = "Detected", labels = c("No", "Yes")) +
   theme_minimal() +
-  theme(
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    axis.text.y = element_text(color = "black", size = 10)
-  ) +
-  labs(x = NULL, y = NULL, title = "Proteins detected by condition (coverage heatmap)")
+  labs(x = "Proteins", y = NULL) +
+  theme(axis.text.y = element_text(face = "bold"))
 
 
+
+
+ggsave(paste0(Folderfig, "/proteinas_detectadas.svg"), plot = p, width = 6, height = 5, dpi = 300)
 
 #-------------------------------------------------------------------------------------------------------------
 
@@ -521,8 +521,8 @@ C <- ggplot(data = data_clean,
   scale_colour_manual(
     name = "significantly more abundant:",
     values = c(
-      "IP 5" = "#003366",
-      "DR 2559" = "#FFA500",
+      "IP 5" = "#d8b500",
+      "DR 2559" = "#ea782c",
       "Not significant" = "lightgrey"
     )
   )+
@@ -583,7 +583,7 @@ fig <- plot_ly(
   type = 'scatter',
   mode = 'markers',
   color = ~grupo,
-  colors = c("IP" = '#003366', "DR" = '#FFA500', "Non-enriched proteins" = 'grey'),
+  colors = c("IP" = "#d8b500", "DR" = "#ea782c", "Non-enriched proteins" = 'grey'),
   text = ~paste("Protein ID:", Protein.ID,
                 "<br>Gene:", gene_symbols_or_id,
                 "<br>log2FC:", round(log2fc, 2),
